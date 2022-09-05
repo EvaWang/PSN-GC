@@ -23,7 +23,6 @@ class BaselineDataset(Dataset):
             target = self.data[index]["file"]
 
         item = {
-            'id': self.data[index]['id'],
             'target': self.sample_transform(target),
             'target_label': self.data[index]["target_label"],
             'target_text': self.data[index]["target_text"]

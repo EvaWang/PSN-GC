@@ -8,10 +8,12 @@ import torchvision.transforms as transforms
 
 from torchvision.models import vgg16_bn, resnet18
 
+import sys
+sys.path.append('./nets')
 from util import read_data, read_json
 from BaselineDataset import BaselineDataset
 # from resnet12 import resnet12
-from nets.melnyk_net import MelnykNet
+from melnyk_net import MelnykNet
 
 import argparse
 from argparse import Namespace
@@ -56,8 +58,7 @@ class Baseline(pl.LightningModule):
             self.encoder.apply(weights_init)
             
         if self.hparams.model_type=="melnyknet": 
-            self.encoder = MelnykNet(include_top=True, vocab_size=self.vocab_size, input_size=self.img_size)
-            self.encoder.fc.apply(weights_init)
+            self.encoder = MelnykNet(include_top=True, vocab_size=self.vocab_size, input_size=64)
 
         self.loss = nn.CrossEntropyLoss()
 
@@ -105,7 +106,8 @@ class Baseline(pl.LightningModule):
         elif self.hparams.optimzer_type == 'SGD':
             optimizer = torch.optim.SGD(self.parameters(), lr=self.hparams.learning_rate, weight_decay=self.hparams.weight_decay, momentum=0.9)
             
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=3)
+        # scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=3)
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=0, factor=0.1, verbose=True, mode='max', min_lr=1e-6)
         return {
             'optimizer': optimizer,
             'lr_scheduler': scheduler,
@@ -116,7 +118,7 @@ class Baseline(pl.LightningModule):
         print('loading data...')
         img_list = read_data(dataset_path)
         print(img_list[0])
-        dataset = BaselineDataset(dataset, data_path=data_path)
+        dataset = BaselineDataset(img_list, data_path=data_path)
     
         return dataset
 
@@ -126,7 +128,7 @@ class Baseline(pl.LightningModule):
         return DataLoader(dataset, 
                           self.hparams.batch_size, 
                           shuffle=True,
-                          collate_fn=dataset.collate_fn,
+                        #   collate_fn=dataset.collate_fn,
                           num_workers=self.hparams.num_workers,
                           persistent_workers=True, pin_memory=True,)
 
@@ -135,7 +137,7 @@ class Baseline(pl.LightningModule):
         # dataset.data = dataset.data[:32]
         return DataLoader(dataset, 
                           self.hparams.batch_size, 
-                          collate_fn=dataset.collate_fn,
+                        #   collate_fn=dataset.collate_fn,
                           num_workers=self.hparams.num_workers,
                           persistent_workers=True, pin_memory=True,)
 
@@ -169,9 +171,10 @@ def main(args):
         'data_folder': args.data_folder,
         'batch_size': args.batch_size,
         'learning_rate': args.lr,
+        'optimzer_type': args.optimzer_type,
         'weight_decay': args.weight_decay,
         'dropout_rate': args.dropout_rate,
-        'use_resnet': args.model_type,
+        'model_type': args.model_type,
         'num_workers': 4,
         'vocab_size': len(label_list)
     })
@@ -187,8 +190,8 @@ def main(args):
     baseline = Baseline(hparams)
     print(baseline)
     
-    if args.ckpt_path != "":
-        trainer.fit(baseline, ckpt_path=args.ckpt_path)
+    if args.resume_from_checkpoint != "":
+        trainer.fit(baseline, ckpt_path=args.resume_from_checkpoint)
     else:
         trainer.fit(baseline)
 
