@@ -49,13 +49,19 @@ class Baseline(pl.LightningModule):
 
         if self.hparams.model_type=="vgg16": 
             self.encoder = vgg16_bn()
+            self.encoder.features[0] = nn.Conv2d(1, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
             self.encoder.classifier[-1] = nn.Linear(4096, self.vocab_size)
-            self.encoder.apply(weights_init)
+            nn.init.kaiming_normal_(self.encoder.features[0].weight, mode='fan_out', nonlinearity='relu')
+            if self.encoder.features[0].bias is not None:
+                nn.init.constant_(self.encoder.features[0].bias, 0)
+            nn.init.normal_(self.encoder.classifier[-1].weight, 0, 0.01)
+            nn.init.constant_(self.encoder.classifier[-1].bias, 0)
             
         if self.hparams.model_type=="resnet18": 
             self.encoder = resnet18()
+            self.encoder.conv1 = nn.Conv2d(1, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
+            nn.init.kaiming_normal_(self.encoder.conv1.weight, mode='fan_out', nonlinearity='relu')
             self.encoder.fc = nn.Sequential(nn.Dropout(self.hparams.dropout_rate), nn.Linear(512, self.vocab_size))
-            self.encoder.apply(weights_init)
             
         if self.hparams.model_type=="melnyknet": 
             self.encoder = MelnykNet(include_top=True, vocab_size=self.vocab_size, input_size=64)
@@ -155,9 +161,9 @@ def _parse_args():
     parser.add_argument('--batch_size', default=256, type=int, help='')
     parser.add_argument('--model_type', default="melnyknet", type=str, help='name')
     parser.add_argument('--optimzer_type', default="SGD", type=str, help='name, SGD;ADAM')
-    parser.add_argument('--lr', default=0.1, type=int, help='')
-    parser.add_argument('--weight_decay', default=1e-3, type=int, help='')
-    parser.add_argument('--dropout_rate', default=0.5, type=int, help='')
+    parser.add_argument('--lr', default=0.1, type=float, help='')
+    parser.add_argument('--weight_decay', default=1e-3, type=float, help='')
+    parser.add_argument('--dropout_rate', default=0.5, type=float, help='')
     args = parser.parse_args()
     return args
 
