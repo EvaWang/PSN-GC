@@ -14,7 +14,7 @@ import glob
 from util import read_json, read_data
 
 
-class Jiaguwen_Dataset(Dataset):
+class JiaguwenDataset(Dataset):
     def __init__(self, data, dictionary_path, data_path = "", template_path= "", compare_num=-1, img_size=64, transform=None, template_transform=None, with_label=True):
         label_dict = read_json(dictionary_path)
         print(dictionary_path)

@@ -11,9 +11,8 @@ import sys
 sys.path.append('./nets')
 import argparse
 from argparse import Namespace
-
-from jiaguwen_Dataset import jiaguwen_Dataset
 from melnyk_net import MelnykNet
+from Jiaguwen_Dataset import JiaguwenDataset
 from util import read_data, read_json
 
 
@@ -141,7 +140,7 @@ class DeepMatchNetJiaguwen(pl.LightningModule):
         print('loading data...')
         img_list = read_data(dataset_path)
         print(img_list[0])
-        dataset = jiaguwen_Dataset(data=img_list, dictionary_path=self.hparams.label_path, data_path=data_folder, compare_num=self.hparams.train_batch)
+        dataset = JiaguwenDataset(data=img_list, dictionary_path=self.hparams.label_path, data_path=data_folder, compare_num=self.hparams.train_batch)
         
         return dataset
 
