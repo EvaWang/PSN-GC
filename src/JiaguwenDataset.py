@@ -135,7 +135,7 @@ if __name__ == '__main__':
     img_list = read_data(data_label)
     print(img_list[0])
     label_dict = read_json(label_filepath)
-    # dataset = Jiaguwen_Dataset(data=img_list, dictionary_path=label_filepath, data_path=data_folder, compare_num=8)
+    # dataset = JiaguwenDataset(data=img_list, dictionary_path=label_filepath, data_path=data_folder, compare_num=8)
     # dataloader = DataLoader(dataset, 4, collate_fn=dataset.collate_fn_with_templates, shuffle=False)
     # for batch in dataloader:
     #     print(batch['template_ans'])
