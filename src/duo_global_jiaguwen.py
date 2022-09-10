@@ -2,7 +2,6 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader
 import pytorch_lightning as pl
-import torchvision.transforms as transforms
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 from pytorch_lightning.callbacks import LearningRateMonitor
 pl.seed_everything(42, workers=True)
@@ -12,7 +11,7 @@ sys.path.append('./nets')
 import argparse
 from argparse import Namespace
 from melnyk_net import MelnykNet
-from Jiaguwen_Dataset import JiaguwenDataset
+from JiaguwenDataset import JiaguwenDataset
 from util import read_data, read_json
 
 
@@ -212,7 +211,6 @@ def main(args):
         LearningRateMonitor(logging_interval='epoch')]) 
     deepMatchNetJiaguwen = DeepMatchNetJiaguwen(hparams)
     print(deepMatchNetJiaguwen)
-    trainer.fit(deepMatchNetJiaguwen)
     if args.ckpt_path != "":
         trainer.fit(deepMatchNetJiaguwen, ckpt_path=args.ckpt_path)
     else:
