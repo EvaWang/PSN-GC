@@ -17,10 +17,11 @@ import numpy
 from util import *
 from JiaguwenDataset import JiaguwenDataset
 from duo_global_jiaguwen import DeepMatchNetJiaguwen
+from dmn import DeepMatchNetJiaguwen as dmn
 from tqdm import tqdm
 
 
-def prediction(pretrained_model, dataset, batch_size, template_label, device='cuda'):
+def prediction(pretrained_model, dataset, batch_size, template_folder, template_label, device='cuda'):
     print('start prediction...')
     device = torch.device(device)
     
@@ -35,7 +36,8 @@ def prediction(pretrained_model, dataset, batch_size, template_label, device='cu
     print(template_list[0])
     templates, templates_text = [], []
     for temp in template_list:
-        img = Image.open(os.path.join("/home/tingwang/Oracle-20k/train", temp["target_text"],temp["filename"]))
+        # img = Image.open(os.path.join(template_folder, temp["ans"],os.path.basename(temp["filename"])))
+        img = Image.open(os.path.join(template_folder, temp["target_text"],temp["filename"]))
         templates.append(template_transform(img))
         templates_text.append(temp["target_text"])
     templates = torch.stack(templates, dim=0).to(device) #torch.Size([3755, 1, 64, 64])
@@ -81,10 +83,12 @@ def _parse_args():
     parser.add_argument('--data_folder', default="/home/tingwang/Oracle-20k/test", type=str, help='img path')
     parser.add_argument('--data_label', default="/home/tingwang/Oracle-20k/test_all.pkl", type=str, help='label path')
     parser.add_argument('--template_label', default="/home/tingwang/Oracle-20k/template.pkl", type=str, help='label path')
+    parser.add_argument('--template_folder', default="/home/tingwang/Oracle-20k/train", type=str, help='label path')
     parser.add_argument('--label_filepath', default="/home/tingwang/Oracle-20k/jiaguwen_hanziyuan.json", type=str, help='dictionary path')
     parser.add_argument('--output_filepath', default="", type=str, help='output file path')
     parser.add_argument('--batch_size', default=128, type=int, help='8G GPU Memory')
     parser.add_argument('--device', default="cuda", type=str, help='cpu or cuda')
+    parser.add_argument('--model_type', default="duo", type=str, help='duo;dmn')
 
     args = parser.parse_args()
     return args
@@ -96,13 +100,22 @@ if __name__ == '__main__':
 
     print(f"loading data... path: {args.data_label}")
     img_list = read_data(args.data_label)
-    img_list = [{'target_text': img['target_text'], 'filename': os.path.basename(img['filename']), 'target_label': img['target_label']} for img in img_list]
+    print(img_list[0])
+    # img_list = [{'target_text': img['target_text'].replace('id_',''), 'filename': os.path.basename(img['filename']), 'target_label': img['target_label']} for img in img_list]
+    img_list = [{'target_text': img['target_text'].replace('id_',''), 'filename': os.path.basename(img['filename']), 'target_label': 0} for img in img_list]
     print(img_list[0])
     print('data loaded...')
-    
-    pretrained_model = DeepMatchNetJiaguwen.load_from_checkpoint(checkpoint_path=args.model_path)
+
+    pretrained_model = None
+    if args.model_type == 'duo':
+        pretrained_model = DeepMatchNetJiaguwen.load_from_checkpoint(checkpoint_path=args.model_path)
+    elif args.model_type == 'dmn':
+        pretrained_model = dmn.load_from_checkpoint(checkpoint_path=args.model_path)
+    else: 
+        raise ValueError(f"No model type: {args.model_type}")
+        
     dataset = JiaguwenDataset(data=img_list, dictionary_path=args.label_filepath, data_path=args.data_folder)
-    prediction_stat, acc = prediction(pretrained_model, dataset, args.batch_size, args.template_label, device=args.device)
+    prediction_stat, acc = prediction(pretrained_model, dataset, args.batch_size, args.template_folder, args.template_label, device=args.device)
 
     csvfile = numpy.asarray(prediction_stat)
     numpy.savetxt(args.output_filepath.replace(".log", ".csv"), csvfile, delimiter=",", fmt="%s")

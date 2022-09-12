@@ -36,7 +36,7 @@ class JiaguwenDataset(Dataset):
         return len(self.data)
 
     def __getitem__(self, index):
-        target = Image.open(os.path.join(self.data_path, self.data[index]['target_text'], self.data[index]['filename']))
+        target = Image.open(os.path.join(self.data_path, str(self.data[index]['target_text']), self.data[index]['filename']))
             
         item = {
             'id': self.data[index]['filename'],
