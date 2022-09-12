@@ -10,7 +10,6 @@ import sys
 sys.path.append('./nets')
 
 from HCCR_Dataset import HCCR_Dataset
-from resnet12 import resnet12
 from nets.melnyk_net import Melync
 from util import read_data
 
@@ -28,16 +27,11 @@ class DeepMatchNet(pl.LightningModule):
         self.emb_dim = self.hparams.emb_dim
         self.vocab_size = self.hparams.vocab_size
         
-        if "use_melynk" in self.hparams and self.hparams.use_melynk==1:
-            self.encoder = Melync(include_top=False, vocab_size=self.vocab_size, input_size=64)
-            self.template_encoder = Melync(include_top=False, vocab_size=self.vocab_size, input_size=64)
-            self.encoder_dim = 448
-            self.template_encoder_dim = 448
-        else:
-            self.encoder = resnet12()
-            self.encoder_dim = self.encoder.nFeat
-            self.template_encoder = resnet12()
-            self.template_encoder_dim = self.template_encoder.nFeat
+        self.encoder = Melync(include_top=False, vocab_size=self.vocab_size, input_size=64)
+        self.template_encoder = Melync(include_top=False, vocab_size=self.vocab_size, input_size=64)
+        self.encoder_dim = 448
+        self.template_encoder_dim = 448
+
 
         self.template_fc = nn.Linear(self.template_encoder_dim, self.emb_dim)
         self.target_fc = nn.Sequential(nn.Dropout(self.hparams.dropout_rate), nn.Linear(self.encoder_dim, self.emb_dim))
@@ -150,16 +144,9 @@ class DeepMatchNet(pl.LightningModule):
         print('loading data...')
         img_list = read_data(dataset_path)
         print(img_list[0])
-        # total = len(img_list)
-        # print(total)
-        # img_list = img_list[: int(total/1000)]
-        template_path = "/home/tingwang/casia_data/template_bg0/"
-        if 'template_path' in self.hparams:
-            template_path = self.hparams.template_path
-            
-        label_path = "/home/tingwang/ChineseCharacterRecognize/src/casia_competition_label.json"
-        if 'label_path' in self.hparams:
-            label_path = self.hparams.label_path
+        
+        template_path = self.hparams.template_path
+        label_path = self.hparams.label_path
             
         dataset = HCCR_Dataset(data=img_list, dictionary_path=label_path, data_path=data_folder, compare_num=self.hparams.train_batch , template_path=template_path)
         
@@ -184,7 +171,7 @@ class DeepMatchNet(pl.LightningModule):
 
 def _parse_args():
     parser = argparse.ArgumentParser(
-        description="Deep Matching Net"
+        description="PSN-GC"
     )
     parser.add_argument('--max_epochs', default=50, type=int, help='max_epochs')
     parser.add_argument('--ckpt_path', default="", type=str, help='ckpt path')
@@ -195,7 +182,6 @@ def _parse_args():
     parser.add_argument('--template_path', default="/home/tingwang/casia_data/template_bg0/", type=str, help='')
     parser.add_argument('--label_path', default="/home/tingwang/ChineseCharacterRecognize/src/casia_competition_label.json", type=str, help='')
     parser.add_argument('--batch_size', default=128, type=int, help='')
-    parser.add_argument('--use_melynk', default=1, type=int, help='0: resnet12 CNN; 1: melynk')
     parser.add_argument('--emb_dim', default=128, type=int, help='best practice=128')
     parser.add_argument('--train_batch', default=128, type=int, help='first 128, then full vocab')
     parser.add_argument('--pretrained_model', default="", type=str, help='for finetune')
@@ -215,7 +201,6 @@ def main(args):
         'dropout_rate':0.5,
         'num_workers':4,
         'train_batch': args.train_batch,
-        'use_melynk': args.use_melynk==1,
         'emb_dim': args.emb_dim,
         'vocab_size': args.vocab_size,
         'data_folder': args.data_folder,
