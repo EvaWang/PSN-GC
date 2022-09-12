@@ -2,7 +2,6 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader
 import pytorch_lightning as pl
-import torchvision.transforms as transforms
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 from pytorch_lightning.callbacks import LearningRateMonitor
 pl.seed_everything(42, workers=True)
@@ -12,7 +11,8 @@ sys.path.append('./nets')
 import argparse
 from argparse import Namespace
 from melnyk_net import MelnykNet
-from Jiaguwen_Dataset import JiaguwenDataset
+from JiaguwenDataset import JiaguwenDataset
+from baseline import Baseline
 from util import read_data, read_json
 
 
@@ -30,7 +30,11 @@ class DeepMatchNetJiaguwen(pl.LightningModule):
         self.template_encoder = MelnykNet(include_top=False, vocab_size=self.vocab_size, input_size=64)
         self.encoder_dim = 448
         self.template_encoder_dim = 448
-            
+
+        if 'pretrained_weight' in self.hparams and self.hparams.pretrained_weight !='':
+            pretrained_net = Baseline.load_from_checkpoint(self.hparams.pretrained_weight)
+            self.encoder.load_state_dict(pretrained_net.encoder.state_dict())   
+
         self.template_fc = nn.Linear(self.template_encoder_dim, self.emb_dim)
         self.target_fc = nn.Sequential(nn.Dropout(self.hparams.dropout_rate), nn.Linear(self.encoder_dim, self.emb_dim))
         self.global_pred = nn.Sequential(nn.Dropout(self.hparams.dropout_rate), nn.Linear(self.encoder_dim, self.vocab_size))
@@ -169,11 +173,12 @@ def _parse_args():
     )
     parser.add_argument('--max_epochs', default=50, type=int, help='max_epochs')
     parser.add_argument('--ckpt_path', default="", type=str, help='ckpt path')
+    parser.add_argument('--pretrained_weight', default="", type=str, help='ckpt path')
     parser.add_argument('--gpu', default="0,1", type=str, help='number of gpu(s)')
-    parser.add_argument('--train_datapath', default="/home/tingwang/jiaguwen/jiaguwen_10+_train_0.pkl", type=str, help='')
-    parser.add_argument('--valid_datapath', default="/home/tingwang/jiaguwen/jiaguwen_10+_valid_0.pkl", type=str, help='')
-    parser.add_argument('--data_folder', default="/home/tingwang/jiaguwen/img_jpg_10+/train", type=str, help='')
-    parser.add_argument('--label_path', default="/home/tingwang/jiaguwen/jiaguwen_10+_0.json", type=str, help='')
+    parser.add_argument('--train_datapath', default="/home/tingwang/Oracle-20k/train.pkl", type=str, help='')
+    parser.add_argument('--valid_datapath', default="/home/tingwang/Oracle-20k/valid.pkl", type=str, help='')
+    parser.add_argument('--data_folder', default="/home/tingwang/Oracle-20k/train", type=str, help='')
+    parser.add_argument('--label_path', default="/home/tingwang/Oracle-20k/jiaguwen_hanziyuan.json", type=str, help='')
     parser.add_argument('--batch_size', default=128, type=int, help='')
     parser.add_argument('--emb_dim', default=128, type=int, help='best practice=128')
     parser.add_argument('--train_batch', default=128, type=int, help='first 128, then full vocab')
@@ -200,7 +205,8 @@ def main(args):
         'alpha': args.alpha,
         'label_path': args.label_path,
         'ckpt_path': args.ckpt_path,
-        'vocab_size': len(label_dict)
+        'vocab_size': len(label_dict),
+        'pretrained_weight':args.pretrained_weight
     })
     print("create trainer")
 
@@ -212,7 +218,6 @@ def main(args):
         LearningRateMonitor(logging_interval='epoch')]) 
     deepMatchNetJiaguwen = DeepMatchNetJiaguwen(hparams)
     print(deepMatchNetJiaguwen)
-    trainer.fit(deepMatchNetJiaguwen)
     if args.ckpt_path != "":
         trainer.fit(deepMatchNetJiaguwen, ckpt_path=args.ckpt_path)
     else:

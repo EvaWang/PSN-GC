@@ -19,7 +19,6 @@ class JiaguwenDataset(Dataset):
         label_dict = read_json(dictionary_path)
         print(dictionary_path)
         self.with_label = with_label
-        # self.data = [{'filename': img["filename"], 'target_label': label_dict["id_"+img["ans"]], 'target_text': img["ans"]} for img in data]
         self.data = data
         self.data_path = data_path
         self.transform = transforms.Compose([transforms.ToTensor()]) if transform is None else transform
@@ -37,7 +36,7 @@ class JiaguwenDataset(Dataset):
         return len(self.data)
 
     def __getitem__(self, index):
-        target = Image.open(os.path.join(self.data_path, self.data[index]['filename']))
+        target = Image.open(os.path.join(self.data_path, str(self.data[index]['target_text']), self.data[index]['filename']))
             
         item = {
             'id': self.data[index]['filename'],
