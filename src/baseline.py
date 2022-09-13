@@ -4,7 +4,6 @@ from torch import nn
 from torch.utils.data import DataLoader
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping, LearningRateMonitor
-import torchvision.transforms as transforms
 
 from torchvision.models import vgg16_bn, resnet18
 
@@ -12,7 +11,6 @@ import sys
 sys.path.append('./nets')
 from util import read_data, read_json
 from BaselineDataset import BaselineDataset
-# from resnet12 import resnet12
 from melnyk_net import MelnykNet
 
 import argparse
@@ -71,6 +69,10 @@ class Baseline(pl.LightningModule):
     def forward(self, target):
         logit_global = self.encoder(target) #target_encode: [batch_size, embedding_dim=128]
 
+        return logit_global
+
+    def get_encodings(self, target):
+        logit_global = self.encoder(target)
         return logit_global
 
     def _unpack_batch(self, batch):
