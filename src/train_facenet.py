@@ -42,12 +42,12 @@ class Baseline(pl.LightningModule):
         super(Baseline, self).__init__()
 
         self.save_hyperparameters(hparams)
-        self.vocab_size = self.hparams.vocab_size
+        self.output_size = self.hparams.output_size
 
         if self.hparams.model_type=="vgg16": 
             self.encoder = vgg16_bn()
             self.encoder.features[0] = nn.Conv2d(1, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
-            self.encoder.classifier[-1] = nn.Linear(4096, self.vocab_size)
+            self.encoder.classifier[-1] = nn.Linear(4096, self.output_size)
             nn.init.kaiming_normal_(self.encoder.features[0].weight, mode='fan_out', nonlinearity='relu')
             if self.encoder.features[0].bias is not None:
                 nn.init.constant_(self.encoder.features[0].bias, 0)
@@ -58,10 +58,10 @@ class Baseline(pl.LightningModule):
             self.encoder = resnet18()
             self.encoder.conv1 = nn.Conv2d(1, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
             nn.init.kaiming_normal_(self.encoder.conv1.weight, mode='fan_out', nonlinearity='relu')
-            self.encoder.fc = nn.Sequential(nn.Dropout(self.hparams.dropout_rate), nn.Linear(512, self.vocab_size))
+            self.encoder.fc = nn.Sequential(nn.Dropout(self.hparams.dropout_rate), nn.Linear(512, self.output_size))
             
         if self.hparams.model_type=="melnyknet": 
-            self.encoder = MelnykNet(include_top=True, vocab_size=self.vocab_size, input_size=64)
+            self.encoder = MelnykNet(include_top=True, vocab_size=self.output_size, input_size=64)
 
         self.loss = nn.TripletMarginWithDistanceLoss(margin=0.2)
 
@@ -69,8 +69,14 @@ class Baseline(pl.LightningModule):
         batch_size = anchor.size(0)
         targets = torch.cat((anchor, positive, negative), dim=0)
         logits = self.encoder(targets)
+        logits_norm = torch.nn.functional.normalize(logits, p=2, dim=1)
 
-        return logits[:batch_size,], logits[batch_size:batch_size*2,], logits[batch_size*2:,]
+        return logits_norm[:batch_size,], logits_norm[batch_size:batch_size*2,], logits_norm[batch_size*2:,]
+
+    def get_encodings(self, targets):
+        encodings = self.encoder(targets)
+        encodings_norm = torch.nn.functional.normalize(encodings, p=2, dim=1)
+        return encodings_norm
 
     def _unpack_batch(self, batch):
         return batch['target'], batch['positive'], batch['negative'], batch['target_label'].long()
@@ -107,7 +113,7 @@ class Baseline(pl.LightningModule):
         elif self.hparams.optimzer_type == 'SGD':
             optimizer = torch.optim.SGD(self.parameters(), lr=self.hparams.learning_rate, weight_decay=self.hparams.weight_decay, momentum=0.9)
             
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=0, factor=0.1, verbose=True, mode='min', min_lr=1e-6)
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=0, factor=0.1, verbose=True, mode='min', min_lr=1e-7)
         return {
             'optimizer': optimizer,
             'lr_scheduler': scheduler,
@@ -158,6 +164,8 @@ def _parse_args():
     parser.add_argument('--lr', default=0.1, type=float, help='')
     parser.add_argument('--weight_decay', default=1e-3, type=float, help='')
     parser.add_argument('--dropout_rate', default=0.5, type=float, help='')
+    parser.add_argument('--output_size', default=128, type=int, help='')
+    
     args = parser.parse_args()
     return args
 
@@ -176,7 +184,7 @@ def main(args):
         'dropout_rate': args.dropout_rate,
         'model_type': args.model_type,
         'num_workers': 4,
-        'vocab_size': len(label_list),
+        'output_size': args.output_size,
         'description': 'triplet loss'
     })
 
@@ -186,7 +194,7 @@ def main(args):
     gpu_list = [int(i) for i in gpu_list]
     trainer = pl.Trainer(gpus=gpu_list, max_epochs=args.max_epochs, gradient_clip_val=1, callbacks=[
         EarlyStopping(monitor='avg_val_loss', patience=10, mode='min', verbose=True), 
-        ModelCheckpoint(monitor="avg_val_loss", mode='max', save_top_k=-1, filename="{epoch:02d}-{val_loss:.2f}-{val_acc:.2f}"),
+        ModelCheckpoint(monitor="avg_val_loss", mode='min', save_top_k=-1, filename="{epoch:02d}-{val_loss:.2f}-{val_acc:.2f}"),
         LearningRateMonitor(logging_interval='epoch')]) 
     baseline = Baseline(hparams)
     print(baseline)

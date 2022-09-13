@@ -24,8 +24,10 @@ class BaselineDataset(Dataset):
         if self.lazy:
             class_name = str(self.data[index]['target_text'])
             target = Image.open(os.path.join(self.data_path, class_name, self.data[index]['filename']))
+            # print(f"anchor: {os.path.join(self.data_path, class_name, self.data[index]['filename'])}")
             positive_list = glob.glob(os.path.join(self.data_path, class_name, "*.jpg"))
             random.shuffle(positive_list)
+            # print(f"positive: {positive_list[0]}")
             positive = Image.open(positive_list[0])
 
             random.shuffle(self.class_list)
@@ -34,6 +36,7 @@ class BaselineDataset(Dataset):
             negative_list = glob.glob(os.path.join(self.data_path, negative_class, "*.jpg"))
             random.shuffle(negative_list)
             negative = Image.open(negative_list[0])
+            # print(f"negative: {negative_list[0]}")
         else:
             target = self.data[index]["file"]
 
