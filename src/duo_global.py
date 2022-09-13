@@ -138,10 +138,7 @@ class DeepMatchNet(pl.LightningModule):
         print('loading data...')
         img_list = read_data(dataset_path)
         print(img_list[0])
-        # total = len(img_list)
-        # print(total)
-        # img_list = img_list[: int(total/1000)]
-            
+
         dataset = HCCR_Dataset(data=img_list, dictionary_path=self.hparams.label_path, data_path=data_folder, compare_num=self.hparams.train_batch , template_path=self.hparams.template_path)
         
         return dataset
@@ -165,7 +162,7 @@ class DeepMatchNet(pl.LightningModule):
 
 def _parse_args():
     parser = argparse.ArgumentParser(
-        description="Deep Matching Net"
+        description="PSN-GC"
     )
     parser.add_argument('--max_epochs', default=50, type=int, help='max_epochs')
     parser.add_argument('--ckpt_path', default="", type=str, help='ckpt path')
