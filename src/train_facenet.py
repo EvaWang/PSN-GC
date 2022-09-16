@@ -10,8 +10,9 @@ from torchvision.models import vgg16_bn, resnet18
 import sys
 sys.path.append('./nets')
 from util import read_data, read_json
-from BaselineDataset_Triplet import BaselineDataset
+from BaselineDataset import BaselineDataset
 from melnyk_net import MelnykNet
+from HardTripletLoss import HardTripletLoss
 
 import argparse
 from argparse import Namespace
@@ -37,9 +38,9 @@ def weights_init(m):
         m.weight.data.normal_(0, 0.01)
         m.bias.data = torch.ones(m.bias.data.size())
 
-class Baseline(pl.LightningModule):
+class BaselineTriplet(pl.LightningModule):
     def __init__(self, hparams):
-        super(Baseline, self).__init__()
+        super(BaselineTriplet, self).__init__()
 
         self.save_hyperparameters(hparams)
         self.output_size = self.hparams.output_size
@@ -63,15 +64,17 @@ class Baseline(pl.LightningModule):
         if self.hparams.model_type=="melnyknet": 
             self.encoder = MelnykNet(include_top=True, vocab_size=self.output_size, input_size=64)
 
-        self.loss = nn.TripletMarginWithDistanceLoss(margin=0.2)
+        if self.hparams.pretrained_weight!="":
+            pretrained_net = BaselineTriplet.load_from_checkpoint(self.hparams.pretrained_weight)
+            self.encoder.load_state_dict(pretrained_net.encoder.state_dict()) 
 
-    def forward(self, anchor, positive, negative):
-        batch_size = anchor.size(0)
-        targets = torch.cat((anchor, positive, negative), dim=0)
+        self.loss = HardTripletLoss(margin=0.2, hardest=self.hparams.triplet_hard)
+
+    def forward(self, targets):
         logits = self.encoder(targets)
         logits_norm = torch.nn.functional.normalize(logits, p=2, dim=1)
 
-        return logits_norm[:batch_size,], logits_norm[batch_size:batch_size*2,], logits_norm[batch_size*2:,]
+        return logits_norm
 
     def get_encodings(self, targets):
         encodings = self.encoder(targets)
@@ -79,20 +82,20 @@ class Baseline(pl.LightningModule):
         return encodings_norm
 
     def _unpack_batch(self, batch):
-        return batch['target'], batch['positive'], batch['negative'], batch['target_label'].long()
+        return batch['target'], batch['target_label'].int()
 
     def training_step(self, batch, batch_nb):
-        target, positive, negative, target_label = self._unpack_batch(batch)
-        logit_anchor, logit_positive, logit_negative = self.forward(target, positive, negative)
-        triplet_loss = self.loss(logit_anchor, logit_positive, logit_negative)
+        target, target_label = self._unpack_batch(batch)
+        logit_anchor = self.forward(target)
+        triplet_loss = self.loss(logit_anchor, target_label)
 
         self.log('train_loss', triplet_loss)
         return {'loss': triplet_loss}
 
     def validation_step(self, batch, batch_nb):
-        target, positive, negative, target_label = self._unpack_batch(batch)
-        logit_anchor, logit_positive, logit_negative = self.forward(target, positive, negative)
-        triplet_loss = self.loss(logit_anchor, logit_positive, logit_negative)
+        target, target_label = self._unpack_batch(batch)
+        logit_anchor = self.forward(target)
+        triplet_loss = self.loss(logit_anchor, target_label)
 
         self.log('val_loss', triplet_loss, prog_bar=True)
         return {'val_loss': triplet_loss, 'progress_bar':{'val_loss': triplet_loss}}
@@ -110,15 +113,18 @@ class Baseline(pl.LightningModule):
         optimizer = None
         if self.hparams.optimzer_type == 'Adam':
             optimizer = torch.optim.Adam(self.parameters(), lr=self.hparams.learning_rate)
+            return {
+                'optimizer': optimizer,
+                'monitor': 'avg_val_loss'
+            }
         elif self.hparams.optimzer_type == 'SGD':
             optimizer = torch.optim.SGD(self.parameters(), lr=self.hparams.learning_rate, weight_decay=self.hparams.weight_decay, momentum=0.9)
-            
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=0, factor=0.1, verbose=True, mode='min', min_lr=1e-7)
-        return {
-            'optimizer': optimizer,
-            'lr_scheduler': scheduler,
-            'monitor': 'avg_val_loss'
-        }
+            scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=0, factor=0.1, verbose=True, mode='min', min_lr=1e-7)
+            return {
+                'optimizer': optimizer,
+                'lr_scheduler': scheduler,
+                'monitor': 'avg_val_loss'
+            }
 
     def _load_dataset(self, dataset_path: str, data_path: str):
         print('loading data...')
@@ -149,9 +155,10 @@ class Baseline(pl.LightningModule):
 
 def _parse_args():
     parser = argparse.ArgumentParser(
-        description="Baseline"
+        description="Baseline Triplet"
     )
-    parser.add_argument('--max_epochs', default=100, type=int, help='max_epochs')
+    parser.add_argument('--max_epochs', default=200, type=int, help='max_epochs')
+    parser.add_argument('--pretrained_weight', default="", type=str, help='ckpt path')
     parser.add_argument('--resume_from_checkpoint', default="", type=str, help='ckpt path')
     parser.add_argument('--gpu', default="0", type=str, help='number of gpu(s)')
     parser.add_argument('--train_datapath', default="/home/tingwang/Oracle-20k/train.pkl", type=str, help='')
@@ -165,14 +172,13 @@ def _parse_args():
     parser.add_argument('--weight_decay', default=1e-3, type=float, help='')
     parser.add_argument('--dropout_rate', default=0.5, type=float, help='')
     parser.add_argument('--output_size', default=128, type=int, help='')
+    parser.add_argument('--triplet_hard', default=0, type=int, help='true:1, false:0')
     
     args = parser.parse_args()
     return args
 
 def main(args):
     
-    label_list = read_json(args.label_list)
-
     hparams = Namespace(**{
         'train_dataset_path': args.train_datapath,
         'valid_dataset_path': args.valid_datapath,
@@ -185,7 +191,9 @@ def main(args):
         'model_type': args.model_type,
         'num_workers': 4,
         'output_size': args.output_size,
-        'description': 'triplet loss'
+        'description': 'hard triplet loss',
+        'pretrained_weight': args.pretrained_weight,
+        'triplet_hard': args.triplet_hard == 1
     })
 
     print("create trainer")
@@ -194,9 +202,9 @@ def main(args):
     gpu_list = [int(i) for i in gpu_list]
     trainer = pl.Trainer(gpus=gpu_list, max_epochs=args.max_epochs, gradient_clip_val=1, callbacks=[
         EarlyStopping(monitor='avg_val_loss', patience=10, mode='min', verbose=True), 
-        ModelCheckpoint(monitor="avg_val_loss", mode='min', save_top_k=-1, filename="{epoch:02d}-{val_loss:.2f}-{val_acc:.2f}"),
+        ModelCheckpoint(monitor="avg_val_loss", mode='min', save_top_k=-1, filename="{epoch:02d}-{val_loss:.4f}"),
         LearningRateMonitor(logging_interval='epoch')]) 
-    baseline = Baseline(hparams)
+    baseline = BaselineTriplet(hparams)
     print(baseline)
     
     if args.resume_from_checkpoint != "":
