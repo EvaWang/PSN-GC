@@ -1,5 +1,4 @@
 import argparse
-from this import s
 import numpy
 import logging
 import sys
