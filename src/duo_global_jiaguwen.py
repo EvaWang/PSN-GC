@@ -131,14 +131,21 @@ class DeepMatchNetJiaguwen(pl.LightningModule):
 
     def configure_optimizers(self):
         print(f"=========lr:{self.hparams.learning_rate}============")
-        # LR scheduler
-        optimizer = torch.optim.SGD(self.parameters(), lr=self.hparams.learning_rate, weight_decay=1e-4, momentum=0.9)
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=0, factor=0.1, verbose=True, mode='max', min_lr=1e-07)
-        return {
-            'optimizer': optimizer,
-            'lr_scheduler': scheduler,
-            'monitor': 'val_acc'
-        }
+        optimzer_type = self.hparams.optimzer_type if 'optimzer_type' in self.hparams else "SGD"
+        if optimzer_type == 'Adam':
+            optimizer = torch.optim.Adam(self.parameters(), lr=self.hparams.learning_rate)
+            return {
+                'optimizer': optimizer,
+                'monitor': 'avg_val_loss'
+            }
+        elif optimzer_type == 'SGD':
+            optimizer = torch.optim.SGD(self.parameters(), lr=self.hparams.learning_rate, weight_decay=self.hparams.weight_decay, momentum=0.9)
+            scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=0, factor=0.1, verbose=True, mode='max', min_lr=1e-7)
+            return {
+                'optimizer': optimizer,
+                'lr_scheduler': scheduler,
+                'monitor': 'avg_val_loss'
+            }
 
     def _load_dataset(self, dataset_path: str, data_folder):
         print('loading data...')
@@ -171,7 +178,7 @@ def _parse_args():
     parser = argparse.ArgumentParser(
         description="Deep Matching Net"
     )
-    parser.add_argument('--max_epochs', default=50, type=int, help='max_epochs')
+    parser.add_argument('--max_epochs', default=1000, type=int, help='max_epochs')
     parser.add_argument('--ckpt_path', default="", type=str, help='ckpt path')
     parser.add_argument('--pretrained_weight', default="", type=str, help='ckpt path')
     parser.add_argument('--gpu', default="0,1", type=str, help='number of gpu(s)')
@@ -182,7 +189,10 @@ def _parse_args():
     parser.add_argument('--batch_size', default=128, type=int, help='')
     parser.add_argument('--emb_dim', default=128, type=int, help='best practice=128')
     parser.add_argument('--train_batch', default=128, type=int, help='first 128, then full vocab')
-    parser.add_argument('--lr', default=0.01, type=float, help='learning rate')
+    parser.add_argument('--optimzer_type', default="SGD", type=str, help='name, SGD;ADAM')
+    parser.add_argument('--lr', default=0.1, type=float, help='')
+    parser.add_argument('--weight_decay', default=1e-3, type=float, help='')
+    parser.add_argument('--dropout_rate', default=0.5, type=float, help='')
     parser.add_argument('--alpha', default=0.6, type=float, help='')
     args = parser.parse_args()
     return args
@@ -196,7 +206,7 @@ def main(args):
         'valid_dataset_path': args.valid_datapath,
         'batch_size': args.batch_size,
         'learning_rate': args.lr,
-        'dropout_rate':0.5,
+        'dropout_rate':args.dropout_rate,
         'num_workers':4,
         'train_batch': args.train_batch,
         'emb_dim': args.emb_dim,
@@ -206,6 +216,8 @@ def main(args):
         'label_path': args.label_path,
         'ckpt_path': args.ckpt_path,
         'vocab_size': len(label_dict),
+        'optimzer_type': args.optimzer_type,
+        'weight_decay': args.weight_decay,
         'pretrained_weight':args.pretrained_weight
     })
     print("create trainer")
@@ -213,8 +225,8 @@ def main(args):
     gpu_list = args.gpu.split(',')
     gpu_list = [int(i) for i in gpu_list]
     trainer = pl.Trainer(gpus=gpu_list, max_epochs=args.max_epochs, gradient_clip_val=1, callbacks=[
-        EarlyStopping(monitor='val_acc', patience=10, mode='max', verbose=True), 
-        ModelCheckpoint(monitor="val_acc", mode='max', save_top_k=-1, filename="{epoch:02d}-{val_loss:.2f}-{val_acc:.2f}"),
+        # EarlyStopping(monitor='val_acc', patience=30, mode='max', verbose=True), 
+        ModelCheckpoint(monitor="val_acc", mode='max', save_top_k=5, filename="{epoch:02d}-{val_loss:.2f}-{val_acc:.2f}"),
         LearningRateMonitor(logging_interval='epoch')]) 
     deepMatchNetJiaguwen = DeepMatchNetJiaguwen(hparams)
     print(deepMatchNetJiaguwen)

@@ -18,7 +18,7 @@ class BaselineDataset(Dataset):
     def __getitem__(self, index):
         target = None
         if self.lazy:
-            target = Image.open(os.path.join(self.data_path, self.data[index]['filename']))
+            target = Image.open(os.path.join(self.data_path, str(self.data[index]['target_text']), self.data[index]['filename']))
         else:
             target = self.data[index]["file"]
 

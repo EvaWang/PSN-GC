@@ -110,7 +110,6 @@ class BaselineTriplet(pl.LightningModule):
         return {'avg_val_loss': avg_val_loss, 'progress_bar':{'avg_val_loss': avg_val_loss}}
 
     def configure_optimizers(self):
-        optimizer = None
         if self.hparams.optimzer_type == 'Adam':
             optimizer = torch.optim.Adam(self.parameters(), lr=self.hparams.learning_rate)
             return {
@@ -173,6 +172,7 @@ def _parse_args():
     parser.add_argument('--dropout_rate', default=0.5, type=float, help='')
     parser.add_argument('--output_size', default=128, type=int, help='')
     parser.add_argument('--triplet_hard', default=0, type=int, help='true:1, false:0')
+    parser.add_argument('--early_stop', default=0, type=int, help='true:1, false:0')
     
     args = parser.parse_args()
     return args
@@ -200,10 +200,16 @@ def main(args):
     
     gpu_list = args.gpu.split(',')
     gpu_list = [int(i) for i in gpu_list]
-    trainer = pl.Trainer(gpus=gpu_list, max_epochs=args.max_epochs, gradient_clip_val=1, callbacks=[
-        EarlyStopping(monitor='avg_val_loss', patience=10, mode='min', verbose=True), 
-        ModelCheckpoint(monitor="avg_val_loss", mode='min', save_top_k=-1, filename="{epoch:02d}-{val_loss:.4f}"),
-        LearningRateMonitor(logging_interval='epoch')]) 
+    if args.early_stop == 1:
+        trainer = pl.Trainer(gpus=gpu_list, max_epochs=args.max_epochs, gradient_clip_val=1, callbacks=[
+            EarlyStopping(monitor='avg_val_loss', patience=20, mode='min', verbose=True), 
+            ModelCheckpoint(monitor="avg_val_loss", mode='min', save_top_k=1, filename="{epoch:03d}-{val_loss:.5f}"),
+            LearningRateMonitor(logging_interval='epoch')]) 
+    else:
+        trainer = pl.Trainer(gpus=gpu_list, max_epochs=args.max_epochs, gradient_clip_val=1, callbacks=[
+            ModelCheckpoint(monitor="avg_val_loss", mode='min', save_top_k=1, filename="{epoch:03d}-{val_loss:.5f}"),
+            LearningRateMonitor(logging_interval='epoch')]) 
+        
     baseline = BaselineTriplet(hparams)
     print(baseline)
     
